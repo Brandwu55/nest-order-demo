@@ -29,11 +29,15 @@ export class CreateOrderDto {
     user_id: number;
 
     @IsNotEmpty({ message: '手機號不能為空' })
-    @ValidateIf(o => o.customer_phone !== '')  // 只有不为空时才执行 Matches
+    customer_phone: string;
+
+    @ValidateIf(o => o.customer_phone !== '' && o.customer_phone !== null)
     @Matches(/^09\d{8}$/, {
         message: '手機號格式不正確（台灣09開頭10位）',
     })
-    customer_phone: string;
+    get customer_phone_check() {
+        return this.customer_phone;
+    }
 
     @IsNotEmpty({ message: '聯繫地址不能為空' })
     @IsString()
