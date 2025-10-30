@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import {Between, LessThanOrEqual, Like, MoreThanOrEqual, Repository} from 'typeorm';
+import {Between, LessThanOrEqual, Like, MoreThanOrEqual, Repository, DataSource} from 'typeorm';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -14,6 +14,8 @@ export class OrdersService {
 
         @InjectRepository(OrderItem)
         private readonly orderItemRepo: Repository<OrderItem>,
+
+        private readonly dataSource: DataSource,
     ) {}
 
     async deleteOrder(orderId: number) {
@@ -41,42 +43,42 @@ export class OrdersService {
     async create(dto: CreateOrderDto): Promise<Order | null> {
         const { items, ...orderData } = dto;
 
-        let totalAmount = 0;
-        let currency: string  = '';
+        return this.dataSource.transaction(async (manager) => {
+            // 计算总金额和币种
+            let totalAmount = 0;
+            let currency: string = '';
 
-        if (items && items.length > 0) {
-            totalAmount = items.reduce((sum, item) => {
-                const price = Number(item.price) || 0;
-                const qty = Number(item.quantity) || 0;
-                return sum + price * qty;
-            }, 0);
+            if (items && items.length > 0) {
+                totalAmount = items.reduce((sum, item) => {
+                    const price = Number(item.price) || 0;
+                    const qty = Number(item.quantity) || 0;
+                    return sum + price * qty;
+                }, 0);
+                currency = items[0].currency || 'TWD';
+            }
 
-            currency = items[0].currency || 'TWD';
-        }
-
-        // 创建主订单
-        const order = this.orderRepo.create({
-            ...orderData,
-            total_amount: totalAmount,
-            currency,
-        });
-        await this.orderRepo.save(order);
-
-        // 创建明细
-        const orderItems = items.map((item) => {
-            const orderItem = this.orderItemRepo.create({
-                ...item,
-                order, // 关联主订单
+            // 创建主订单
+            const order = manager.create(Order, {
+                ...orderData,
+                total_amount: totalAmount,
+                currency,
             });
-            return orderItem;
-        });
+            await manager.save(order);
 
-        await this.orderItemRepo.save(orderItems);
+            // 创建明细
+            const orderItems = items.map((item) => {
+                return manager.create(OrderItem, {
+                    ...item,
+                    order,
+                });
+            });
+            await manager.save(orderItems);
 
-        // 返回带明细的订单
-        return this.orderRepo.findOne({
-            where: { id: order.id },
-            relations: ['items'],
+            // 返回带明细的订单
+            return manager.findOne(Order, {
+                where: { id: order.id },
+                relations: ['items'],
+            });
         });
     }
 
