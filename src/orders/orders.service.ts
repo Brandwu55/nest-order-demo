@@ -19,13 +19,23 @@ export class OrdersService {
     ) {}
 
     async deleteOrder(orderId: number) {
-        // 先删子表
-        await this.orderItemRepo.delete(orderId);
+        return await this.dataSource.transaction(async (manager) => {
 
-        // 再删主表
-        const deleted = await this.orderRepo.delete(orderId);
+            // 先删子表 — 必须按外键字段删除
+            await manager.getRepository(OrderItem).delete({ order: { id: orderId } });
 
-        return deleted;
+            // 再删主表
+            const result = await manager.getRepository(Order).delete(orderId);
+
+            return result;
+        });
+        // // 先删子表
+        // await this.orderItemRepo.delete(orderId);
+        //
+        // // 再删主表
+        // const deleted = await this.orderRepo.delete(orderId);
+        //
+        // return deleted;
     }
 
     async updateStatus(orderId: number, status: string, remark: string) {
